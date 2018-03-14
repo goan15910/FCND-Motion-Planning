@@ -134,7 +134,7 @@ class MotionPlanning(Drone):
             coord = list(map(float, coord))
         
         # TODO: set home position to (lat0, lon0, 0)
-        #self.set_home_position(coord[0], coord[1], 0)
+        self.set_home_position(coord[1], coord[0], 0)
 
         # TODO: retrieve current global position
         # TODO: convert to current local position using global_to_local()
@@ -163,7 +163,7 @@ class MotionPlanning(Drone):
         home = global_to_local([-122.397335, 37.792571, 0], self.global_home)
         market_st = global_to_local([-122.395788, 37.793772, 0.], self.global_home)
         drum_st = global_to_local([-122.396385, 37.795124, 0.], self.global_home)
-        #front_st = global_to_local([-122.398925, 37.792702, 0.], self.global_home)
+        front_st = global_to_local([-122.398925, 37.792702, 0.], self.global_home)
         #clay_davis_cross = global_to_local([-122.398249, 37.796079, 0.], self.global_home)
         my_goal = drum_st
         goal = (int(my_goal[0]+north_offset), int(my_goal[1]+east_offset))
@@ -171,13 +171,11 @@ class MotionPlanning(Drone):
         # Run A* to find a path from start to goal
         # TODO: (done) add diagonal motions with a cost of sqrt(2) to your A* implementation
         # TODO: or move to a different search space such as a graph (not done here)
-        #print('Local Start and Goal: ', grid_start, grid_goal)
         print('Local Start and Goal: ', start, goal)
-        #path, _ = a_star(grid, heuristic, grid_start, grid_goal)
         path, _ = a_star(grid, heuristic, start, goal)
         
         # TODO: prune path to minimize number of waypoints
-        path = prune_path(path, epsilon=1e-10)
+        path = prune_path(path, epsilon=1e-6)
         # TODO (if you're feeling ambitious): Try a different approach altogether!
 
         # Convert path to waypoints
