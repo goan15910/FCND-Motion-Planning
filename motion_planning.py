@@ -177,7 +177,7 @@ class MotionPlanning(Drone):
         path, _ = a_star(grid, heuristic, start, goal)
         
         # TODO: prune path to minimize number of waypoints
-        path = prune_path(path, epsilon=10-4)
+        path = prune_path(path, epsilon=1e-10)
         # TODO (if you're feeling ambitious): Try a different approach altogether!
 
         # Convert path to waypoints
