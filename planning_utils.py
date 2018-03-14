@@ -1,6 +1,7 @@
 from enum import Enum
 from queue import PriorityQueue
 import numpy as np
+import numpy.linalg as LA
 
 
 def create_grid(data, drone_altitude, safety_distance):
@@ -59,6 +60,12 @@ class Action(Enum):
     EAST = (0, 1, 1)
     NORTH = (-1, 0, 1)
     SOUTH = (1, 0, 1)
+    
+    #TODO: add diagnol directions
+    #NORTH_EAST = (-1, 1, int(np.sqrt(2)))
+    #SOUTH_EAST = (1, 1, int(np.sqrt(2)))
+    #SOUTH_WEST = (1, -1, int(np.sqrt(2)))
+    #NORTH_WEST = (-1, -1, int(np.sqrt(2)))
 
     @property
     def cost(self):
@@ -79,6 +86,7 @@ def valid_actions(grid, current_node):
 
     # check if the node is off the grid or
     # it's an obstacle
+    #TODO: add diagnol actions
 
     if x - 1 < 0 or grid[x - 1, y] == 1:
         valid_actions.remove(Action.NORTH)
@@ -88,6 +96,14 @@ def valid_actions(grid, current_node):
         valid_actions.remove(Action.WEST)
     if y + 1 > m or grid[x, y + 1] == 1:
         valid_actions.remove(Action.EAST)
+    #if (x - 1 < 0 or y + 1 > m) or grid[x-1, y+1] == 1:
+    #    valid_actions.remove(Action.NORTH_EAST)
+    #if (x + 1 > m or y + 1 > m) or grid[x+1, y+1] == 1:
+    #    valid_actions.remove(Action.SOUTH_EAST)
+    #if (x + 1 > m or y - 1 < 0) or grid[x+1, y-1] == 1:
+    #    valid_actions.remove(Action.SOUTH_WEST)
+    #if (x - 1 < 0 or y - 1 < 0) or grid[x-1, y-1] == 1:
+    #    valid_actions.remove(Action.NORTH_WEST)
 
     return valid_actions
 
@@ -143,6 +159,29 @@ def a_star(grid, h, start, goal):
         print('**********************') 
     return path[::-1], path_cost
 
-def heuristic(position, goal_position):
-    return np.linalg.norm(np.array(position) - np.array(goal_position))
 
+def heuristic(position, goal_position):
+    return LA.norm(np.array(position) - np.array(goal_position))
+
+
+def in_line(p1, p2, p3, epsilon):
+    p1 = np.array(p1)
+    p2 = np.array(p2)
+    p3 = np.array(p3)
+    m = np.vstack((p1, p2, p3))
+    m = np.hstack((m, np.ones((3,1))))
+    return LA.det(m) < epsilon
+
+
+def prune_path(path, epsilon=1e-4):
+    pruned_path = []
+    last, cand = path[:2]
+    pruned_path.append(last)
+    for p in path[2:]:
+        if not in_line(last, cand, p, epsilon):
+            pruned_path.append(cand)
+            last = pruned_path[-1]
+        cand = p
+    if last != path[-1]:
+        pruned_path.append(path[-1])
+    return pruned_path
