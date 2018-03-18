@@ -147,17 +147,13 @@ class MotionPlanning(Drone):
 
         # Read in obstacle map
         data = np.loadtxt('colliders.csv', delimiter=',', dtype='Float64', skiprows=3)
-        # Determine offsets between grid and map
-        north_offset = int(np.abs(np.min(data[:, 0])))
-        east_offset = int(np.abs(np.min(data[:, 1])))
-
-        print("North offset = {0}, east offset = {1}".format(north_offset, east_offset))
 
         # Define a grid for a particular altitude and safety margin around obstacles
-        grid = create_grid(data, TARGET_ALTITUDE, SAFETY_DISTANCE)
+        grid, north_offset, east_offset = create_grid(data, TARGET_ALTITUDE, SAFETY_DISTANCE)
+        print("North offset = {0}, east offset = {1}".format(north_offset, east_offset))
         print("Grid shape: {}".format(grid.shape))
         # Define starting point on the grid (this is just grid center)
-        start = (int(current_local_pos[0]+north_offset), int(current_local_pos[1]+east_offset))
+        start = (int(current_local_pos[0]-north_offset), int(current_local_pos[1]-east_offset))
         
         # Set goal as some arbitrary position on the grid
         home = global_to_local([-122.397335, 37.792571, 0], self.global_home)
@@ -166,7 +162,7 @@ class MotionPlanning(Drone):
         front_st = global_to_local([-122.398925, 37.792702, 0.], self.global_home)
         #clay_davis_cross = global_to_local([-122.398249, 37.796079, 0.], self.global_home)
         my_goal = drum_st
-        goal = (int(my_goal[0]+north_offset), int(my_goal[1]+east_offset))
+        goal = (int(my_goal[0]-north_offset), int(my_goal[1]-east_offset))
 
         # Run A* to find a path from start to goal
         # TODO: (done) add diagonal motions with a cost of sqrt(2) to your A* implementation
@@ -179,12 +175,12 @@ class MotionPlanning(Drone):
         # TODO (if you're feeling ambitious): Try a different approach altogether!
 
         # Convert path to waypoints
-        waypoints = [[p[0] - north_offset, p[1] - east_offset, TARGET_ALTITUDE, 0] for p in path]
+        waypoints = [[p[0] + north_offset, p[1] + east_offset, TARGET_ALTITUDE, 0] for p in path]
         # Set self.waypoints
         self.waypoints = waypoints
         print("Number of waypoints: {}".format(len(waypoints)))
         # TODO: send waypoints to sim
-        self.send_waypoints()
+        #self.send_waypoints()
 
     def start(self):
         self.start_log("Logs", "NavLog.txt")
