@@ -4,75 +4,17 @@ from queue import PriorityQueue
 import numpy as np
 import numpy.linalg as LA
 
+from bresenham import bresenham
+
 from shapely.geometry import Polygon, Point, LineString
 
 
-def create_grid(data, drone_altitude, safety_distance):
-    """
-    Returns a grid representation of a 2D configuration space
-    based on given obstacle data, drone altitude and safety distance
-    arguments.
-    """
-
-    # minimum and maximum north coordinates
-    north_min = np.floor(np.min(data[:, 0] - data[:, 3]))
-    north_max = np.ceil(np.max(data[:, 0] + data[:, 3]))
-
-    # minimum and maximum east coordinates
-    east_min = np.floor(np.min(data[:, 1] - data[:, 4]))
-    east_max = np.ceil(np.max(data[:, 1] + data[:, 4]))
-
-    # given the minimum and maximum coordinates we can
-    # calculate the size of the grid.
-    north_size = int(np.ceil((north_max - north_min + 1)))
-    east_size = int(np.ceil((east_max - east_min + 1)))
-
-    # Initialize an empty grid
-    grid = np.zeros((north_size, east_size))
-
-    # Populate the grid with obstacles
-    for i in range(data.shape[0]):
-        north, east, alt, d_north, d_east, d_alt = data[i, :]
-        if alt + d_alt + safety_distance > drone_altitude:
-            obstacle = [
-                int(np.clip(north - d_north - safety_distance - north_min, 0, north_size-1)),
-                int(np.clip(north + d_north + safety_distance - north_min, 0, north_size-1)),
-                int(np.clip(east - d_east - safety_distance - east_min, 0, east_size-1)),
-                int(np.clip(east + d_east + safety_distance - east_min, 0, east_size-1)),
-            ]
-            grid[obstacle[0]:obstacle[1]+1, obstacle[2]:obstacle[3]+1] = 1
-
-    return grid, int(north_min), int(east_min)
-
-
-class Poly:
-    """Class help to maintain graph"""
-    def __init__(self, coords, height):
-        self._poly = Polygon(coords)
-        self._h = height
-
-    @property
-    def height(self):
-        return self._h
-
-    @property
-    def coords(self):
-        return list(self._poly.exterior.coords[:-1])
-
-    @property
-    def area(self):
-        return self._poly.area
-
-    @property
-    def center(self):
-        return (self._poly.centroid.x, self._poly.centroid.y)
-
-    def contains(self, point):
-        point = Point(point)
-        return self._poly.contains(point)
-
-    def crosses(self, other):
-        return self._poly.crosses(other)
+def read_global_home(filename):
+    with open(filename, 'r') as f:
+        top_line = f.readline().strip()
+        coord = top_line.replace("lat0 ", "").replace("lon0", "").split(", ")
+        coord = list(map(float, coord))
+    return [coord[1], coord[0], 0]
 
 
 # Assume all actions cost the same.
@@ -147,35 +89,39 @@ class Action_3D(Enum):
         return self.value[:3]
 
 
-def valid_actions(grid, current_node):
+class Map_graph:
     """
-    Returns a list of valid actions given a grid and current node.
+    Map graph base class. 
+    Convert 2.5D grid to customized graph.
     """
-    valid_actions = list(Action)
-    n, m = grid.shape[0] - 1, grid.shape[1] - 1
-    x, y = current_node
+    def __init__(self,
+                 grid,
+                 start,
+                 goal,
+                 actions=None,
+                 verbose=False):
+        # basic parameters
+        self.grid = grid
+        self.graph = None
+        self.actions = actions
+        self.h_func = heuristic
+        self._start = start
+        self._goal = goal
+        self.verbose = verbose
 
-    # check if the node is off the grid or
-    # it's an obstacle
+    @property
+    def start(self):
+        return tuple(map(int, self._start))
 
-    if x - 1 < 0 or grid[x - 1, y] == 1:
-        valid_actions.remove(Action.NORTH)
-    if x + 1 > n or grid[x + 1, y] == 1:
-        valid_actions.remove(Action.SOUTH)
-    if y - 1 < 0 or grid[x, y - 1] == 1:
-        valid_actions.remove(Action.WEST)
-    if y + 1 > m or grid[x, y + 1] == 1:
-        valid_actions.remove(Action.EAST)
-    if (x - 1 < 0 or y + 1 > m) or grid[x-1, y+1] == 1:
-        valid_actions.remove(Action.NORTH_EAST)
-    if (x + 1 > m or y + 1 > m) or grid[x+1, y+1] == 1:
-        valid_actions.remove(Action.SOUTH_EAST)
-    if (x + 1 > m or y - 1 < 0) or grid[x+1, y-1] == 1:
-        valid_actions.remove(Action.SOUTH_WEST)
-    if (x - 1 < 0 or y - 1 < 0) or grid[x-1, y-1] == 1:
-        valid_actions.remove(Action.NORTH_WEST)
+    @property
+    def goal(self):
+        return tuple(map(int, self._goal))
 
-    return valid_actions
+    def create_graph(self):
+        raise NotImplementedError
+
+    def next_nodes(self, n1, n1_cost):
+        raise NotImplementedError
 
 
 class A_star:
@@ -183,20 +129,17 @@ class A_star:
     A star algorithm for 2D grid / 3D grid / graph
     """
     def __init__(self,
-                 graph,
-                 start,
-                 goal,
-                 actions=None,
-                 h_func=None):
+                 map_graph,
+                 verbose=False):
         # setup basic component of A*
-        self.graph = graph
-        self.start = tuple(start)
-        self.goal = tuple(goal)
-        self.actions = actions
-        if h_func is None:
-            self.h_func = heuristic
-        else:
-            self.h_func = h_func
+        self.map = map_graph
+        self.start = self.map.start
+        self.goal = self.map.goal
+        self.verbose = verbose
+
+        if self.verbose:
+            print("start: ", self.start)
+            print("goal: ", self.goal)
 
 
     def compute_path(self):
@@ -215,14 +158,15 @@ class A_star:
             n1 = item[1]
 
             if n1 == self.goal:
-                print('Found a path.')
+                if self.verbose:
+                    print('Found a path.')
                 found = True
                 break
             else:
-                n2_list = self.next_nodes(n1, n1_cost)
+                n2_list = self.map.next_nodes(n1, n1_cost)
                 for n2,n2_cost in n2_list:
-                    if tuple(n2) not in visited:
-                        visited.add(tuple(n2))
+                    if n2 not in visited:
+                        visited.add(n2)
                         queue.put((n2_cost, n2))
                         branch[n2] = (n2_cost, n1)
         
@@ -242,117 +186,77 @@ class A_star:
         return path[::-1], path_cost
 
 
-    def next_nodes(self, n1, n1_cost):
-        nodes = []
-        if self.actions is None:
-            for n2 in self.graph[n1]:
-                a_cost = self.graph.edges[n1, n2]['weight']
-                n2_cost = n1_cost + a_cost + self.h_func(n2, self.goal)
-                nodes.append((tuple(n2), n2_cost))
-        else:
-            for a in self._valid_actions(n1):
-                mapped = map(lambda x,y:x+y, n1, a.delta)
-                n2 = tuple(mapped)
-                n2_cost = n1_cost + a.cost + self.h_func(n2, self.goal)
-                nodes.append((n2, n2_cost))
-        return nodes
+def heuristic(node, goal):
+    node = np.array(node)
+    goal = np.array(goal)
+    return LA.norm(node-goal)
 
 
-    def _valid_actions(self, cur_node):
-        assert self.actions is not None, \
-            "Graph has no action set"
-        valid_actions = list(self.actions)
-        for a in valid_actions:
-            mapped =  map(sum, zip(cur_node, a.delta))
-            next_node = tuple(mapped)
-            if not self._valid_grid_cell(next_node):
-                valid_actions.remove(a)
-
-        return valid_actions
-
-
-    def _valid_grid_cell(self, node):
-        shape = self.graph.shape
-        n_dim = len(shape)
-        node = tuple(map(int, node))
-        for i in range(n_dim):
-            if (node[i] < 0) or \
-               (node[i] > shape[i]-1) or \
-               (self.graph[node] == 1):
-                return False
-        return True
+def valid_next_nodes(cur_node, graph, actions):
+    assert actions is not None, \
+            "Need to specify actions!"
+    all_actions = list(actions)
+    valid_actions = []
+    valid_nodes = []
+    for a in all_actions:
+        mapped =  map(sum, zip(cur_node, a.delta))
+        next_node = tuple(mapped)
+        if valid_cell(next_node, graph):
+            valid_nodes.append(next_node)
+            valid_actions.append(a)
+    return list(zip(valid_nodes, valid_actions))
 
 
-def a_star(grid, h, start, goal):
-    """
-    Given a grid and heuristic function returns
-    the lowest cost path from start to goal.
-    """
-    path = []
-    path_cost = 0
-    queue = PriorityQueue()
-    queue.put((0, start))
-    visited = set(start)
+def valid_cell(node, graph):
+    shape = graph.shape
+    n_dim = len(shape)
+    node = tuple(map(int, node))
+    for i in range(n_dim):
+        if (node[i] < 0) or (node[i] > shape[i]-1):
+            return False
+        elif graph[node] == 1:
+            return False
+    return True    
 
-    branch = {}
-    found = False
 
-    while not queue.empty():
-        item = queue.get()
-        n1_cost = item[0]
-        n1 = item[1]
-
-        if n1 == goal:
-            print('Found a path.')
-            found = True
+def bump(p1, p2, grid, alt_offset):
+    # bresenham algorithm
+    cells = list(bresenham(p1[0], p1[1], p2[0], p2[1]))
+    hit = False
+    for c in cells:
+        # First check if we're off the map
+        if np.amin(c) < 0 or \
+           c[0] >= grid.shape[0] or \
+           c[1] >= grid.shape[1]:
+            hit = True
             break
-        else:
-            # Get the new vertexes connected to the current vertex
-            for a in valid_actions(grid, n1):
-                n2 = list(map(lambda x,y:x+y, n1, a.delta))
-                n2_cost = n1_cost + a.cost + h(n2, goal)
-
-                if n2 not in visited:
-                    visited.add(n2)
-                    queue.put((n2_cost, n2))
-                    branch[n2] = (n2_cost, n1, a)
-
-    if found:
-        # retrace steps
-        n = goal
-        path_cost = branch[n][0]
-        path.append(goal)
-        while branch[n][1] != start:
-            path.append(branch[n][1])
-            n = branch[n][1]
-        path.append(branch[n][1])
-    else:
-        print('**********************')
-        print('Failed to find a path!')
-        print('**********************') 
-
-    return path[::-1], path_cost
+        # Next check if we're in collision
+        if grid[c[0], c[1]] >= alt_offset:
+            hit = True
+            break
+    return hit
 
 
-def heuristic(position, goal_position):
-    return LA.norm(np.array(position) - np.array(goal_position))
-
-
-def in_line(p1, p2, p3, epsilon):
+def in_line(p1, p2, p3, epsilon, normalize=False):
     p1 = np.array(p1)
     p2 = np.array(p2)
     p3 = np.array(p3)
+    if normalize:
+        p1 = p1 / LA.norm(p1)
+        p2 = p2 / LA.norm(p2)
+        p3 = p3 / LA.norm(p3)
     m = np.vstack((p1, p2, p3))
-    m = np.hstack((m, np.ones((3,1))))
-    return LA.det(m) < epsilon
+    if m.shape[-1] == 2:
+        m = np.hstack((m, np.ones((3,1))))
+    return np.abs(LA.det(m)) < epsilon
 
 
-def prune_path(path, epsilon):
+def prune_path(path, epsilon, normalize=False):
     pruned_path = []
     last, cand = path[:2]
     pruned_path.append(last)
     for p in path[2:]:
-        if not in_line(last, cand, p, epsilon):
+        if not in_line(last, cand, p, epsilon, normalize):
             pruned_path.append(cand)
             last = pruned_path[-1]
         cand = p
