@@ -163,9 +163,6 @@ time cost| 0.80 s | 0.75 s | 0.77 s
 
 ## Execute the flight
 ### 1. Does it work?
-It works! Below is a demo flying video. <br/>
-
-[![Demo](https://img.youtube.com/vi/cvZjo8JO4pM/0.jpg)]
-(https://www.youtube.com/watch?v=cvZjo8JO4pM&feature=youtu.be)
+It works! Below is a [demo fyling video](https://www.youtube.com/watch?v=cvZjo8JO4pM&feature=youtu.be). <br/>
 
 
