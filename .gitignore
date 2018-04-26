@@ -1,3 +1,4 @@
 *.pyc
 .vimrc
 *.txt
+.ipynb_checkpoints/*
